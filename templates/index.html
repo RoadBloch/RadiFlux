@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Icy Lake Solution</title>
+
+        <link rel="stylesheet" href="/static/style.css">
+
+        <!-- MathJax -->
+        <script>
+            window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' }
+            };
+        </script>
+        <script id="MathJax-script" async
+                src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+
+        <script src="https://cdn.plot.ly/plotly-2.26.0.min.js" defer></script>
+    </head>
+
+    
+
+
+  <body>
+    <button id="debug-btn" style="
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 2000;
+        padding: 6px 12px;
+        background:#1e293b;
+        color:white;
+        border:1px solid #475569;
+        border-radius:6px;
+        cursor:pointer;">
+            Debug
+    </button>
+    <div class="app">
+
+      <header class="topbar panel">
+        <input type="radio" id="m-t"  name="mode" value="t"  checked>
+        <label for="m-t">$t$</label>
+
+        <input type="radio" id="m-p"  name="mode" value="p">
+        <label for="m-p">$p$</label>
+
+        <div class="sliders">
+          <div id="s-t" class="slider-row">
+            <span class="min">$0\text{s}$</span>
+            <input id="t" name="t" type="range"
+                   min="0" max="20" step="0.01"
+                   value="{{ t or 0 }}">
+            <span class="max">
+            <input id="t-max" type="number"
+                  value="20"
+                  step="any"
+                  style="width:60px; background:transparent; border:1px solid #475569; color:white; text-align:center;">
+                  $\,\mathrm{hr}$
+          </span>
+            
+          </div>
+
+          <div id="s-p" class="slider-row">
+            <span class="min">$0$</span>
+            <input id="p" name="p" type="range"
+                   min="0" max="1" step="0.05"
+                   value="{{ p }}">
+            <span class="max">$1$</span>
+          </div>
+
+      </header>
+
+      <main class="main">
+        <div class="panel">
+        <div id="plot" style="width:100%;height:520px;"></div>
+            <pre id="debug">
+                JS has not run yet.
+            </pre>
+        </div>
+
+        <aside class="panel">
+          <h3>LAKE PARAMETERS</h3>
+
+          <div class="row">
+            <div class="label">Depth $z_0$</div>
+            <div class="input-wrap">
+              <input id="z0" name="z0" type="number" step="any"
+                     value="{{ z0 }}">
+              <span class="unit">$[\text{m}]$</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="label">Thermocline temperature $T_H$</div>
+            <div class="input-wrap">
+              <input id="T_H" name="T_H" type="number" step="any"
+                     value="{{ T_H }}">
+              <span class="unit">$[^\circ\text{C}]$</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="label">Thermocline height $H$</div>
+            <div class="input-wrap">
+              <input id="H" name="H" type="number" step="any"
+                     value="{{ H }}">
+              <span class="unit">$[\text{m}]$</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="label">White ice attenuation $k_w$</div>
+            <div class="input-wrap">
+              <input id="kw" name="kw" type="number" step="any"
+                     value="{{ kw }}">
+              <span class="unit">$[\text{m}^{-1}]$</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="label">Black ice attenuation $k_b$</div>
+            <div class="input-wrap">
+              <input id="kb" name="kb" type="number" step="any"
+                     value="{{ kb }}">
+              <span class="unit">$[\text{m}^{-1}]$</span>
+            </div>
+          </div>
+
+          <div class="readout">
+            <div class="read-row">
+              <span class="k">Time $t$</span>
+              <span id="t-out" class="v">-</span>$\text{hr}$
+            </div>
+            <div class="read-row">
+              <span class="k">White ice proportion $p$</span>
+              <span id="p-out" class="v">-</span>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script>
+        const t   = document.getElementById('t');   
+        const p   = document.getElementById('p');    
+
+        const z0  = document.getElementById('z0');  
+        const TH  = document.getElementById('T_H');  
+        const H   = document.getElementById('H');    
+        const kw  = document.getElementById('kw');   
+        const kb  = document.getElementById('kb');   
+
+        const t_out = document.getElementById('t-out');
+        const p_out = document.getElementById('p-out');
+
+        const plotEl  = document.getElementById('plot');
+        const debugEl = document.getElementById('debug');
+
+        // DEBUG
+        debugEl.textContent = 'JS script started, preparing to fetch...';
+
+        function format(n) {
+            const num = +n;
+            const needs2 = Math.abs(num) < 1 && (num % 1 !== 0);
+            return num.toFixed(needs2 ? 2 : 1);
+        }
+
+        function updateReadouts() {
+            t_out.textContent = format(t.value);
+            p_out.textContent = format(p.value);
+        }
+
+        async function drawProfile() {
+            const paramsNow = new URLSearchParams({
+                z0:  z0.value || 10,
+                H:   H.value  || 1,
+                T_H: TH.value || 10,
+                t:   t.value  || 2,
+                p:   p.value  || 0,
+                kw:  kw.value || 6.9,
+                kb:  kb.value || 2.2
+            });
+
+            const paramsZero = new URLSearchParams(paramsNow);
+            paramsZero.set("t","0");
+
+            try {
+                const [resp0,respNow]= await Promise.all([
+                  fetch(`/api/profile?${paramsZero.toString()}`),
+                  fetch(`/api/profile?${paramsNow.toString()}`),
+                ]);
+
+                const [data0,dataNow]=await Promise.all([
+                  resp0.json(),
+                  respNow.json()
+                ]);
+
+                debugEl.textContent =
+                  'Fetched /api/profile\n' +
+                  'First 5 z: ' + JSON.stringify((dataNow.z || []).slice(0, 5)) + '\n' +
+                  'First 5 T: ' + JSON.stringify((dataNow.T || []).slice(0, 5));
+
+                const trace0 = {
+                  x: data0.T,
+                  y: data0.z,
+                  mode: 'lines',
+                  name: 't=0'
+                };
+
+                const traceNow = {
+                  x: dataNow.T,
+                  y: dataNow.z,
+                  mode: 'lines',
+                  name: `t = ${t.value}`
+                };
+
+                var layout = {
+                    title: {text: 'Depth vs. Temperature Profile'},
+
+                    xaxis: { 
+                      title: 'Temperature [°C]' 
+                    },
+                    yaxis: { 
+                      title: 'Depth z [m]' 
+                    },
+                    margin: { l: 60, r: 20, t: 50, b: 60 },
+                    showlegend: true
+                };
+
+                Plotly.react(plotEl, [trace0,traceNow], layout);
+            } catch (err) {
+                debugEl.textContent = 'Error: ' + err;
+                console.error('Error drawing profile:', err);
+            }
+        }
+
+        [t, p, z0, TH, H, kw, kb].forEach(el => {
+            el.addEventListener('input', () => {
+            updateReadouts();
+            drawProfile();
+            });
+        });
+
+        updateReadouts();
+        drawProfile();
+
+        let debugWindow = null;
+        function openDebugWindow() {
+          debugWindow = window.open("",'DebugWindow',"width=700,height=450");
+          if(!debugWindow){
+            debugEl.textContent="Popup blocked. Allow popups for this site, then click Debug again.";
+            return;
+          }
+          debugWindow.document.open();
+          debugWindow.document.write(`
+              <!doctype html>
+              <html>
+                <head>
+                  <title>Debug Console</title>
+                  <style>
+                    body {margin: 0; background: #000; color: #0f0; font-family:ui-monospace, SFMono-Regular,Menlo,monospace;}
+                    header {padding: 10px; border-bottom:1px solid #333;}
+                    pre {margin: 0; padding: 10px; white-space: pre-wrap;}
+                  </style>
+                </head>
+                <body>
+                  <header><b>Debug Output</b></header>
+                  <pre id="dbg"></pre>
+                </body>
+              </html>
+          `);
+          debugWindow.document.close();
+          syncDebugToPopup();
+        }
+
+        function syncDebugToPopup() {
+          if (!debugWindow || debugWindow.closed) return;
+          const pre = debugWindow.document.getElementById("dbg");
+          if (pre) pre.textContent = debugEl.textContent;
+        }
+
+        const observer = new MutationObserver(syncDebugToPopup);
+        observer.observe(debugEl, {childList:true,subtree:true,characterData:true});
+
+        const debugBtn = document.getElementById("debug-btn");
+        if (debugBtn) debugBtn.addEventListener("click", openDebugWindow);
+
+        const tMaxInput = document.getElementById('t-max');
+
+        function updateTimeMax() {
+          const max = parseFloat(tMaxInput.value);
+          if (!isFinite(max) || max <= 0) return;
+
+          t.max = max;
+
+          // clamp current value
+          if (parseFloat(t.value) > max) {
+            t.value = max;
+          }
+
+          updateReadouts();
+          drawProfile();
+        }
+
+        tMaxInput.addEventListener('input', updateTimeMax);
+    
+    </script>
+    </body>
+</html>

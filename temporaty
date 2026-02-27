@@ -1,0 +1,145 @@
+
+    <main>
+        <div id="plot-area">
+            <p>plots gonna go here</p>
+        </div>
+
+        <aside>
+        
+            
+            <div class="row">
+                <span></span>
+                <div>$t= $<output id="t_out">{{t}}</output>$ \text{[s]}$</div>
+            </div>
+            <div class="row">
+                <span></span>
+                <div>$k_w= $<output id="kw_out">{{kw}}</output> $\left[\text{m}^{-1}\right]$</div>
+            </div>
+            <div class="row">
+                <span></span>
+                <div>$p= $ <output id="p_out">{{p}}</output> $\text{[-]}$</div>
+            </div>
+        </aside>
+    </main>
+    <form action="/" method="get">
+        <button>Enter</button>
+    </form>
+
+    {% if T_surface %}
+        <div class="result">
+        <div><b>Demo output (surface T):</b> <output>{{ T_surface }}</output>[*C]</div>
+        <small>Currently using a placeholder formula. We’ll plug in your real equations next.</small>
+        </div>
+    {% endif %}
+
+        <!--
+        $$\rho=\rho_{MD} \left(1-C \left[T-T_{MD}\right]^2\right)$$
+        $$T_0(z)=\frac{T_H}{2}\int_{z}^{0}{1+\tanh{\left(\frac{z'+H}{\delta}\right)}}dz'$$
+        $$\frac{\partial T}{\partial t}=\kappa\frac{\partial^2 T}{\partial z^2}+\frac{I_0}{\lambda \rho_{MD}c_p}e^{\frac{z}{\lambda}}$$
+        -->
+
+
+
+
+ ## INITAL CONDITION
+    ## T_H:     hyolimnion temp     [*C]
+    ## H:       thermocline depth   [m]
+    ## delta:   transition length   [m]
+    ## returns array of T_0 (index=0) and margin of error (index=1)
+    def T_0(z,T_H,H,delta):
+        I=quad(lambda z_prime: 1+tanh((z_prime + H)/delta),z,0)     # do by hand
+        I[0]=T_H/2.0*I[0]
+        return I
+
+    ## DENSITY AT A GIVEN TEMPERATURE
+    ## T:   temperature @ a certain depth z [m]
+    ## C:   Constant from integration?
+    def rho(T,C):
+        dT2=(T-T_MD)**2
+        rho=rho_MD*(1-C*dT2)
+        return rho
+    
+    '''
+    ## PLOTTING 1D HEAT EQUATION WHEN k=0
+    ## I_0:      light under ice     [W/m^-2]
+    ## clarity:  water clarity       [1/m] 
+    z=np.linspace(z_0,0,500)
+    T_0=-T_H*z/H
+    coeff=I_0/(clarity*rho_MD*c_P)
+    T=T_0+coeff*exp(z/clarity)*t_1
+    mpl.plot(T,z,label="depth vs. Temp")
+    mpl.title("1D heat equation - kappa=0")
+    mpl.ylabel("depth [m]")
+    mpl.xlabel("temperature [*C]")
+    mpl.show()
+    '''
+
+
+
+
+    
+
+
+
+
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded',()=>{
+            const t = document.getElementById('t');
+            const p = document.getElementById('p');
+            const kw = document.getElementById('kw');
+            const kb = document.getElementById('kb');
+
+            const t_out = document.getElementById('t-out');
+            const p_out = document.getElementById('p-out');
+            const kw_out = document.getElementById('kw-out');
+            const kb_out = document.getElementById('kb-out');
+
+            const plot = document.getElementById('plot')
+
+            function format(n){
+                const num = +n;
+                const needs2=Math.abs(num) < 1 && (num % 1 !== 0);
+                return num.toFixed(needs2 ? 2 : 1);
+            }
+
+            function updateAll(){
+                t_out.textContent=`${format(t.value)}`;
+                p_out.textContent=`${format(p.value)}`;
+                kw_out.textContent=`${format(kw.value)}`;
+                kb_out.textContent=`${format(kb.value)}`;
+            }
+
+            [t,p,kw,kb].forEach(el => el.addEventListener('input',updateAll));
+
+            updateAll();
+
+            async function drawProfileOnce(){
+                try{
+                    const resp = await fetch('/api/profile');
+                    const data = await resp.json();
+
+                    const trace = {
+                        x: data.T,
+                        y: data.z,
+                        mode: 'lines',
+                        name: 'Temperature profile'
+                    };
+
+                    const layout = {
+                        xaxis: {title: 'Temperature [*C]'},
+                        yaxis: {title: 'Depth [m]', autorange:'reversed'},
+                        margin:{l:60, r:20, t:10, b:60},
+                        showlegend:false
+                    };
+                    Plotly.newPlot(plot,[trace],layout);
+                } catch (err) {
+                    console.error('Errpr drawing profle', err)
+                }
+
+            }
+
+             drawProfileOnce();
+        });
+    </script>
